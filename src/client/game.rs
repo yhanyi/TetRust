@@ -10,6 +10,7 @@ pub struct Game {
     piece_x: i32,
     piece_y: i32,
     score: u32,
+    game_over: bool,
 }
 
 impl Game {
@@ -20,15 +21,49 @@ impl Game {
             piece_x: WIDTH as i32 / 2 - 2,
             piece_y: 0,
             score: 0,
+            game_over: false,
         }
     }
 
     pub fn spawn_piece(&mut self) {
         let mut rng = rand::thread_rng();
-        let piece_types = [TetrominoType::I, TetrominoType::O, TetrominoType::T];
+        let piece_types = [
+            TetrominoType::I,
+            TetrominoType::O,
+            TetrominoType::T,
+            TetrominoType::L,
+            TetrominoType::J,
+            TetrominoType::S,
+            TetrominoType::Z,
+        ];
         self.current_piece = Tetromino::new(piece_types[rng.gen_range(0..piece_types.len())]);
         self.piece_x = WIDTH as i32 / 2 - 2;
         self.piece_y = 0;
+
+        if self.check_collision() {
+            self.game_over = true;
+        }
+    }
+
+    pub fn rotate(&mut self, is_clockwise: bool) {
+        // Store original position and cells
+        let original_x = self.piece_x;
+        let original_y = self.piece_y;
+        let original_cells = self.current_piece.cells;
+
+        // Try rotation
+        if is_clockwise {
+            self.current_piece.rotate_clockwise();
+        } else {
+            self.current_piece.rotate_anticlockwise();
+        }
+
+        // If rotation causes collision, revert back
+        if self.check_collision() {
+            self.current_piece.cells = original_cells;
+            self.piece_x = original_x;
+            self.piece_y = original_y;
+        }
     }
 
     pub fn draw(&self) {
@@ -66,7 +101,7 @@ impl Game {
 
         // Move cursor and draw top border
         execute!(stdout(), MoveTo(start_x as u16, start_y as u16),).unwrap();
-        println!("┌{}┐", "─".repeat(WIDTH));
+        // println!("┌{}┐", "─".repeat(WIDTH));
 
         // Draw board contents
         for y in 0..HEIGHT {
@@ -76,14 +111,12 @@ impl Game {
             )
             .unwrap();
 
-            print!("│");
             for x in 0..WIDTH {
                 match temp_board.get(x, y) {
-                    Cell::Empty => print!("◻"),
-                    Cell::Filled => print!("◼"),
+                    Cell::Empty => print!("⬛"),
+                    Cell::Filled => print!("⬜"),
                 }
             }
-            print!("│");
         }
 
         // Draw bottom border
@@ -92,7 +125,6 @@ impl Game {
             MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 1) as u16),
         )
         .unwrap();
-        println!("└{}┘", "─".repeat(WIDTH));
 
         // Draw score below the board
         execute!(
@@ -101,6 +133,21 @@ impl Game {
         )
         .unwrap();
         println!("Score: {}", self.score);
+
+        if self.game_over {
+            execute!(
+                stdout(),
+                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 3) as u16),
+            )
+            .unwrap();
+            println!("Game Over!");
+            execute!(
+                stdout(),
+                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 4) as u16),
+            )
+            .unwrap();
+            println!("Press 'r' to restart or 'q' to quit");
+        }
     }
 
     pub fn move_piece(&mut self, dx: i32, dy: i32) -> bool {
@@ -188,5 +235,16 @@ impl Game {
             4 => 800,
             _ => 0,
         };
+    }
+
+    pub fn restart(&mut self) {
+        self.board = Board::new();
+        self.score = 0;
+        self.game_over = false;
+        self.spawn_piece();
+    }
+
+    pub fn is_game_over(&self) -> bool {
+        self.game_over
     }
 }
