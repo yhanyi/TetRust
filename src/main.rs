@@ -44,6 +44,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     KeyCode::Char('r') => {
                         game.restart();
                     }
+                    KeyCode::Char('c') => {
+                        game.hold_piece();
+                    }
+                    KeyCode::Char(' ') => {
+                        game.hard_drop();
+                    }
+                    KeyCode::Esc | KeyCode::Char('p') => {
+                        game.toggle_pause();
+                    }
                     KeyCode::Char('q') => break,
                     _ => {}
                 },
@@ -52,7 +61,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
 
         // Gravity
-        if !game.is_game_over() && last_tick.elapsed() >= Duration::from_millis(TICK_RATE) {
+        if !game.is_game_over()
+            && !game.is_paused()
+            && last_tick.elapsed() >= Duration::from_millis(TICK_RATE)
+        {
             if !game.move_piece(0, 1) {
                 game.lock_piece();
             }

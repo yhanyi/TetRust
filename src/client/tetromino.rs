@@ -9,6 +9,7 @@ pub enum TetrominoType {
     Z,
 }
 
+#[derive(Clone)]
 pub struct Tetromino {
     pub tetromino_type: TetrominoType,
     pub cells: [[bool; 4]; 4],
@@ -59,7 +60,6 @@ impl Tetromino {
                 [false, false, false, false],
                 [false, false, false, false],
             ],
-            _ => [[false; 4]; 4],
         };
 
         Self {

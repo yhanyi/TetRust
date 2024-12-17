@@ -5,6 +5,17 @@ pub const HEIGHT: usize = 20;
 pub enum Cell {
     Empty,
     Filled,
+    Preview,
+}
+
+impl Cell {
+    pub fn to_string(&self) -> &str {
+        match self {
+            Cell::Empty => "⬜",
+            Cell::Filled => "⬛",
+            Cell::Preview => "🟦",
+        }
+    }
 }
 
 #[derive(Clone)]
