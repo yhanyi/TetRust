@@ -93,10 +93,6 @@ impl Game {
         self.state.clone()
     }
 
-    pub fn set_state(&mut self, state: GameState) {
-        self.state = state;
-    }
-
     fn draw_piece_preview(&self, piece: &Tetromino, x: i32, y: i32, title: &str) {
         // Draw border top
         execute!(stdout(), MoveTo(x as u16, y as u16)).unwrap();
@@ -143,16 +139,12 @@ impl Game {
     }
 
     fn draw_title_screen(&self, selected_option: usize, term_width: u16, term_height: u16) {
-        let logo = vec![
-            "▀▀█▀▀ █▀▀ ▀▀█▀▀ █▀▀█ █░░░█ █▀▀ ▀▀█▀▀",
-            "░░█░░ █▀▀ ░░█░░ █▄▄▀ █▄ ▄█ ▀▀█ ░░█░░",
-            "░░▀░░ ▀▀▀ ░░▀░░ ▀░▀▀ ░▀▀▀░ ▀▀▀ ░░▀░░",
-        ];
+        let logo = vec!["---------------", "   Tet-Rust!   ", "---------------"];
 
         let menu_options = vec!["Play", "Help", "GitHub", "Quit"];
-        let start_y = (term_height as i32 - (logo.len() + menu_options.len() + 3) as i32) / 2;
 
-        // Draw logo
+        let start_y = (term_height as i32) / 3; // Move logo higher up
+                                                // Draw logo
         for (i, line) in logo.iter().enumerate() {
             execute!(
                 stdout(),
@@ -165,13 +157,12 @@ impl Game {
             println!("{}", line);
         }
 
-        // Draw menu options
         for (i, option) in menu_options.iter().enumerate() {
             execute!(
                 stdout(),
                 MoveTo(
                     (term_width as i32 - option.len() as i32 - 4) as u16 / 2,
-                    (start_y + logo.len() as i32 + 2 + i as i32) as u16
+                    (start_y + logo.len() as i32 + 1 + i as i32) as u16
                 ),
             )
             .unwrap();
@@ -182,21 +173,22 @@ impl Game {
             );
         }
 
-        // Draw credits
+        let line = "Created by Han Yi";
+
         execute!(
             stdout(),
             MoveTo(
-                (term_width as i32 - 20) as u16 / 2,
-                (start_y + logo.len() as i32 + menu_options.len() as i32 + 4) as u16
+                (term_width as i32 - line.len() as i32) as u16 / 2,
+                (start_y + logo.len() as i32 + menu_options.len() as i32 + 2) as u16
             ),
         )
         .unwrap();
-        println!("Created by Han Yi");
+        println!("{}", line);
     }
 
     fn draw_game_screen(&self, term_width: u16, term_height: u16) {
-        let board_width = WIDTH + 2;
-        let board_height = HEIGHT + 2;
+        let board_width = WIDTH;
+        let board_height = HEIGHT;
         let start_x = (term_width as i32 - board_width as i32) / 2;
         let start_y = (term_height as i32 - board_height as i32) / 2;
 
@@ -242,13 +234,13 @@ impl Game {
         // Draw hold piece
         if let Some(held_type) = self.held_piece {
             let held_piece = Tetromino::new(held_type);
-            self.draw_piece_preview(&held_piece, start_x - 8, start_y, "HOLD");
+            self.draw_piece_preview(&held_piece, start_x - 10, start_y, "HOLD");
         }
 
         // Draw next piece
         self.draw_piece_preview(
             &self.next_piece,
-            start_x + WIDTH as i32 + 2,
+            start_x + board_width as i32 + 4,
             start_y,
             "NEXT",
         );
@@ -269,7 +261,7 @@ impl Game {
         // Draw score
         execute!(
             stdout(),
-            MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 1) as u16),
+            MoveTo((start_x - 3) as u16, (start_y + HEIGHT as i32 + 1) as u16),
         )
         .unwrap();
         println!("Score: {}", self.score);
@@ -295,8 +287,8 @@ impl Game {
         let help_text = vec![
             "Controls:",
             "←/→: Move piece",
-            "↑: Rotate clockwise",
-            "Z: Rotate counter-clockwise",
+            "A: Rotate clockwise",
+            "D: Rotate anti-clockwise",
             "↓: Soft drop",
             "Space: Hard drop",
             "C: Hold piece",
@@ -331,19 +323,13 @@ impl Game {
                 KeyCode::Down => {
                     *selected_option = (*selected_option + 1) % 4;
                 }
-                KeyCode::Enter => {
-                    match *selected_option {
-                        0 => self.state = GameState::Playing,
-                        1 => self.state = GameState::Paused, // Show help screen
-                        2 => {
-                            if let Ok(()) = open::that("https://github.com/yhanyi") {
-                                // Successfully opened browser
-                            }
-                        }
-                        3 => std::process::exit(0),
-                        _ => {}
-                    }
-                }
+                KeyCode::Enter => match *selected_option {
+                    0 => self.state = GameState::Playing,
+                    1 => self.state = GameState::Paused,
+                    2 => if let Ok(()) = open::that("https://github.com/yhanyi/TetRust") {},
+                    3 => std::process::exit(0),
+                    _ => {}
+                },
                 _ => {}
             }
         }
