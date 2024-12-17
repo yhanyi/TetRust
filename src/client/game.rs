@@ -1,37 +1,48 @@
 use crate::client::board::{Board, Cell, HEIGHT, WIDTH};
 use crate::client::tetromino::{Tetromino, TetrominoType};
-use crossterm::{cursor::MoveTo, execute};
+use crossterm::{cursor::MoveTo, event::KeyCode, execute};
 use rand::Rng;
 use std::io::stdout;
+
+#[derive(Clone, PartialEq)]
+pub enum GameState {
+    TitleScreen { selected_option: usize },
+    Playing,
+    Paused,
+    GameOver,
+}
 
 pub struct Game {
     board: Board,
     current_piece: Tetromino,
+    next_piece: Tetromino,
     piece_x: i32,
     piece_y: i32,
     score: u32,
-    game_over: bool,
     held_piece: Option<TetrominoType>,
     can_hold: bool,
-    paused: bool,
+    state: GameState,
 }
 
 impl Game {
     pub fn new() -> Self {
-        Self {
+        let mut game = Self {
             board: Board::new(),
             current_piece: Tetromino::new(TetrominoType::I),
+            next_piece: Tetromino::new(TetrominoType::I),
             piece_x: WIDTH as i32 / 2 - 2,
             piece_y: 0,
             score: 0,
-            game_over: false,
             held_piece: None,
             can_hold: true,
-            paused: false,
-        }
+            state: GameState::TitleScreen { selected_option: 0 },
+        };
+        game.spawn_piece();
+        game
     }
 
     pub fn spawn_piece(&mut self) {
+        self.current_piece = self.next_piece.clone();
         let mut rng = rand::thread_rng();
         let piece_types = [
             TetrominoType::I,
@@ -42,31 +53,30 @@ impl Game {
             TetrominoType::S,
             TetrominoType::Z,
         ];
-        self.current_piece = Tetromino::new(piece_types[rng.gen_range(0..piece_types.len())]);
+        self.next_piece = Tetromino::new(piece_types[rng.gen_range(0..piece_types.len())]);
+
         self.piece_x = WIDTH as i32 / 2 - 2;
         self.piece_y = 0;
 
         if self.check_collision() {
-            self.game_over = true;
+            self.state = GameState::GameOver;
         }
 
         self.can_hold = true;
     }
 
     pub fn rotate(&mut self, is_clockwise: bool) {
-        // Store original position and cells
         let original_x = self.piece_x;
         let original_y = self.piece_y;
         let original_cells = self.current_piece.cells;
 
-        // Try rotation
         if is_clockwise {
             self.current_piece.rotate_clockwise();
         } else {
             self.current_piece.rotate_anticlockwise();
         }
 
-        // If rotation causes collision, revert back
+        // Revert if rotation causes collision
         if self.check_collision() {
             self.current_piece.cells = original_cells;
             self.piece_x = original_x;
@@ -79,56 +89,120 @@ impl Game {
         self.lock_piece();
     }
 
-    pub fn draw(&self) {
-        // Get terminal size
-        let (term_width, term_height) = crossterm::terminal::size().unwrap_or((80, 24));
+    pub fn get_state(&self) -> GameState {
+        self.state.clone()
+    }
 
-        // Centre board, +2 for borders
+    pub fn set_state(&mut self, state: GameState) {
+        self.state = state;
+    }
+
+    fn draw_piece_preview(&self, piece: &Tetromino, x: i32, y: i32, title: &str) {
+        // Draw border top
+        execute!(stdout(), MoveTo(x as u16, y as u16)).unwrap();
+        println!("┌──────┐");
+
+        // Draw title
+        execute!(stdout(), MoveTo((x + 1) as u16, y as u16)).unwrap();
+        print!(" {} ", title);
+
+        // Draw piece with padding
+        for row in 0..4 {
+            execute!(stdout(), MoveTo(x as u16, (y + 1 + row) as u16)).unwrap();
+            print!("│");
+            for col in 0..4 {
+                if piece.cells[row as usize][col as usize] {
+                    print!("{}", Cell::Filled.to_string());
+                } else {
+                    print!(" ");
+                }
+            }
+            print!("│");
+        }
+
+        // Draw border bottom
+        execute!(stdout(), MoveTo(x as u16, (y + 5) as u16)).unwrap();
+        println!("└──────┘");
+    }
+
+    pub fn draw(&self) {
+        let (term_width, term_height) = crossterm::terminal::size().unwrap_or((80, 24));
+        print!("\x1B[2J");
+
+        match &self.state {
+            GameState::TitleScreen { selected_option } => {
+                self.draw_title_screen(*selected_option, term_width, term_height);
+            }
+            GameState::Paused => {
+                self.draw_pause_screen(term_width, term_height);
+            }
+            GameState::Playing | GameState::GameOver => {
+                self.draw_game_screen(term_width, term_height);
+            }
+        }
+    }
+
+    fn draw_title_screen(&self, selected_option: usize, term_width: u16, term_height: u16) {
+        let logo = vec![
+            "▀▀█▀▀ █▀▀ ▀▀█▀▀ █▀▀█ █░░░█ █▀▀ ▀▀█▀▀",
+            "░░█░░ █▀▀ ░░█░░ █▄▄▀ █▄ ▄█ ▀▀█ ░░█░░",
+            "░░▀░░ ▀▀▀ ░░▀░░ ▀░▀▀ ░▀▀▀░ ▀▀▀ ░░▀░░",
+        ];
+
+        let menu_options = vec!["Play", "Help", "GitHub", "Quit"];
+        let start_y = (term_height as i32 - (logo.len() + menu_options.len() + 3) as i32) / 2;
+
+        // Draw logo
+        for (i, line) in logo.iter().enumerate() {
+            execute!(
+                stdout(),
+                MoveTo(
+                    (term_width as i32 - line.len() as i32) as u16 / 2,
+                    (start_y + i as i32) as u16
+                ),
+            )
+            .unwrap();
+            println!("{}", line);
+        }
+
+        // Draw menu options
+        for (i, option) in menu_options.iter().enumerate() {
+            execute!(
+                stdout(),
+                MoveTo(
+                    (term_width as i32 - option.len() as i32 - 4) as u16 / 2,
+                    (start_y + logo.len() as i32 + 2 + i as i32) as u16
+                ),
+            )
+            .unwrap();
+            print!(
+                "{} {}",
+                if i == selected_option { ">" } else { " " },
+                option
+            );
+        }
+
+        // Draw credits
+        execute!(
+            stdout(),
+            MoveTo(
+                (term_width as i32 - 20) as u16 / 2,
+                (start_y + logo.len() as i32 + menu_options.len() as i32 + 4) as u16
+            ),
+        )
+        .unwrap();
+        println!("Created by Han Yi");
+    }
+
+    fn draw_game_screen(&self, term_width: u16, term_height: u16) {
         let board_width = WIDTH + 2;
         let board_height = HEIGHT + 2;
         let start_x = (term_width as i32 - board_width as i32) / 2;
         let start_y = (term_height as i32 - board_height as i32) / 2;
 
-        // Clear screen once
-        print!("\x1B[2J");
-
-        if self.paused {
-            // Draw pause screen with help
-            let help_text = vec![
-                "Controls:",
-                "←/→: Move piece",
-                "↑: Rotate clockwise",
-                "Z: Rotate counter-clockwise",
-                "↓: Soft drop",
-                "Space: Hard drop",
-                "C: Hold piece",
-                "P: Pause/Unpause",
-                "R: Restart game",
-                "Q: Quit game",
-                "",
-                "Press P to resume",
-            ];
-
-            let help_y = start_y + (board_height as i32 - help_text.len() as i32) / 2;
-
-            for (i, line) in help_text.iter().enumerate() {
-                execute!(
-                    stdout(),
-                    MoveTo(
-                        (start_x + (board_width as i32 - line.len() as i32) / 2) as u16,
-                        (help_y + i as i32) as u16
-                    ),
-                )
-                .unwrap();
-                println!("{}", line);
-            }
-            return;
-        }
-
-        // Create temporary board with current piece
         let mut temp_board = self.board.clone();
 
-        // Draw landing preview first (so it appears under the active piece)
+        // Draw landing preview
         let landing_y = self.get_landing_position();
         for y in 0..4 {
             for x in 0..4 {
@@ -148,7 +222,7 @@ impl Game {
             }
         }
 
-        // Draw current piece on temporary board
+        // Draw current piece
         for y in 0..4 {
             for x in 0..4 {
                 if self.current_piece.cells[y][x] {
@@ -165,81 +239,113 @@ impl Game {
             }
         }
 
-        // Draw held piece
+        // Draw hold piece
         if let Some(held_type) = self.held_piece {
             let held_piece = Tetromino::new(held_type);
-            execute!(stdout(), MoveTo((start_x - 6) as u16, start_y as u16),).unwrap();
-            println!("HOLD:");
-
-            for y in 0..4 {
-                execute!(
-                    stdout(),
-                    MoveTo((start_x - 6) as u16, (start_y + 1 + y) as u16),
-                )
-                .unwrap();
-                for x in 0..4 {
-                    if held_piece.cells[y as usize][x as usize] {
-                        print!("{}", Cell::Filled.to_string());
-                    } else {
-                        print!(" ");
-                    }
-                }
-            }
+            self.draw_piece_preview(&held_piece, start_x - 8, start_y, "HOLD");
         }
 
-        // Move cursor and draw top border
-        execute!(stdout(), MoveTo(start_x as u16, start_y as u16),).unwrap();
-        // println!("┌{}┐", "─".repeat(WIDTH));
+        // Draw next piece
+        self.draw_piece_preview(
+            &self.next_piece,
+            start_x + WIDTH as i32 + 2,
+            start_y,
+            "NEXT",
+        );
 
-        // Draw board contents
+        // Draw main board
         for y in 0..HEIGHT {
             execute!(
                 stdout(),
-                MoveTo(start_x as u16, (start_y + 1 + y as i32) as u16),
+                MoveTo(start_x as u16, (start_y + y as i32) as u16),
             )
             .unwrap();
 
-            // print!("│");
             for x in 0..WIDTH {
-                // match temp_board.get(x, y) {
-                //     Cell::Empty => print!(" "),
-                //     Cell::Filled => print!("▢"),
-                //     Cell::Preview => print!("⛶"),
-                // }
                 print!("{}", temp_board.get(x, y).to_string());
             }
-            // print!("│");
         }
 
-        // Draw bottom border
+        // Draw score
         execute!(
             stdout(),
             MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 1) as u16),
         )
         .unwrap();
-        // println!("└{}┘", "─".repeat(WIDTH));
-
-        // Draw score below the board
-        execute!(
-            stdout(),
-            MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 2) as u16),
-        )
-        .unwrap();
         println!("Score: {}", self.score);
 
-        if self.game_over {
+        // Draw game over message if needed
+        if let GameState::GameOver = self.state {
             execute!(
                 stdout(),
-                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 3) as u16),
+                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 2) as u16),
             )
             .unwrap();
             println!("Game Over!");
             execute!(
                 stdout(),
-                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 4) as u16),
+                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 3) as u16),
             )
             .unwrap();
             println!("Press 'r' to restart or 'q' to quit");
+        }
+    }
+
+    fn draw_pause_screen(&self, term_width: u16, term_height: u16) {
+        let help_text = vec![
+            "Controls:",
+            "←/→: Move piece",
+            "↑: Rotate clockwise",
+            "Z: Rotate counter-clockwise",
+            "↓: Soft drop",
+            "Space: Hard drop",
+            "C: Hold piece",
+            "Esc/P: Pause/Unpause",
+            "R: Restart game",
+            "Q: Quit game",
+            "",
+            "Press Esc or P to resume",
+        ];
+
+        let start_y = (term_height as i32 - help_text.len() as i32) / 2;
+
+        for (i, line) in help_text.iter().enumerate() {
+            execute!(
+                stdout(),
+                MoveTo(
+                    (term_width as i32 - line.len() as i32) as u16 / 2,
+                    (start_y + i as i32) as u16
+                ),
+            )
+            .unwrap();
+            println!("{}", line);
+        }
+    }
+
+    pub fn handle_title_input(&mut self, key: KeyCode) {
+        if let GameState::TitleScreen { selected_option } = &mut self.state {
+            match key {
+                KeyCode::Up => {
+                    *selected_option = selected_option.checked_sub(1).unwrap_or(3);
+                }
+                KeyCode::Down => {
+                    *selected_option = (*selected_option + 1) % 4;
+                }
+                KeyCode::Enter => {
+                    match *selected_option {
+                        0 => self.state = GameState::Playing,
+                        1 => self.state = GameState::Paused, // Show help screen
+                        2 => {
+                            if let Ok(()) = open::that("https://github.com/yhanyi") {
+                                // Successfully opened browser
+                            }
+                        }
+                        3 => std::process::exit(0),
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
         }
     }
 
@@ -279,12 +385,10 @@ impl Game {
     }
 
     pub fn lock_piece(&mut self) {
-        // Create a temporary copy of the current piece's data
         let piece = self.current_piece.cells;
         let piece_x = self.piece_x;
         let piece_y = self.piece_y;
 
-        // Update the board with the piece's position
         for y in 0..4 {
             for x in 0..4 {
                 if piece[y][x] {
@@ -323,7 +427,6 @@ impl Game {
         }
     }
 
-    // Add this method to find landing position
     fn get_landing_position(&self) -> i32 {
         let mut test_y = self.piece_y;
         while !self.would_collide(self.piece_x, test_y + 1) {
@@ -332,7 +435,7 @@ impl Game {
         test_y
     }
 
-    // Helper method to check potential collisions
+    // Checks for potential collision
     fn would_collide(&self, test_x: i32, test_y: i32) -> bool {
         for y in 0..4 {
             for x in 0..4 {
@@ -380,21 +483,19 @@ impl Game {
     }
 
     pub fn toggle_pause(&mut self) {
-        self.paused = !self.paused;
-    }
-
-    pub fn is_paused(&self) -> bool {
-        self.paused
+        self.state = match self.state {
+            GameState::Playing => GameState::Paused,
+            GameState::Paused => GameState::Playing,
+            _ => self.state.clone(),
+        };
     }
 
     pub fn restart(&mut self) {
         self.board = Board::new();
         self.score = 0;
-        self.game_over = false;
+        self.state = GameState::Playing;
+        self.held_piece = None;
+        self.can_hold = true;
         self.spawn_piece();
-    }
-
-    pub fn is_game_over(&self) -> bool {
-        self.game_over
     }
 }
