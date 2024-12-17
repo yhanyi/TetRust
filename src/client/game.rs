@@ -4,10 +4,9 @@ use crossterm::{cursor::MoveTo, event::KeyCode, execute};
 use rand::Rng;
 use std::io::stdout;
 
-const PREVIEW_WIDTH: usize = 4; // Each cell is a full-width character
-const PREVIEW_HEIGHT: usize = 4; // Keep height the same as tetromino size
+const PREVIEW_WIDTH: usize = 4;
+const PREVIEW_HEIGHT: usize = 4;
 const PREVIEW_PADDING: i32 = 2;
-const BOX_PADDING: i32 = 1; // Padding inside the box
 
 #[derive(Clone, PartialEq)]
 pub enum GameState {
