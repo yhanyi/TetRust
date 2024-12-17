@@ -4,6 +4,11 @@ use crossterm::{cursor::MoveTo, event::KeyCode, execute};
 use rand::Rng;
 use std::io::stdout;
 
+const PREVIEW_WIDTH: usize = 4; // Each cell is a full-width character
+const PREVIEW_HEIGHT: usize = 4; // Keep height the same as tetromino size
+const PREVIEW_PADDING: i32 = 2;
+const BOX_PADDING: i32 = 1; // Padding inside the box
+
 #[derive(Clone, PartialEq)]
 pub enum GameState {
     TitleScreen { selected_option: usize },
@@ -94,31 +99,46 @@ impl Game {
     }
 
     fn draw_piece_preview(&self, piece: &Tetromino, x: i32, y: i32, title: &str) {
-        // Draw border top
+        // Draw top border with title
         execute!(stdout(), MoveTo(x as u16, y as u16)).unwrap();
-        println!("┌──────┐");
+        println!("┌────────┐"); // 4 cells × 2 chars per cell = 8 chars wide
 
-        // Draw title
         execute!(stdout(), MoveTo((x + 1) as u16, y as u16)).unwrap();
         print!(" {} ", title);
 
-        // Draw piece with padding
-        for row in 0..4 {
-            execute!(stdout(), MoveTo(x as u16, (y + 1 + row) as u16)).unwrap();
-            print!("│");
-            for col in 0..4 {
-                if piece.cells[row as usize][col as usize] {
-                    print!("{}", Cell::Filled.to_string());
-                } else {
-                    print!(" ");
+        // Create a temporary mini-board
+        let mut preview = vec![vec![Cell::Empty; PREVIEW_WIDTH]; PREVIEW_HEIGHT];
+
+        // Calculate centering for piece
+        for py in 0..4 {
+            for px in 0..4 {
+                if piece.cells[py][px] {
+                    if py < PREVIEW_HEIGHT && px < PREVIEW_WIDTH {
+                        preview[py][px] = Cell::Filled;
+                    }
                 }
             }
-            print!("│");
         }
 
-        // Draw border bottom
-        execute!(stdout(), MoveTo(x as u16, (y + 5) as u16)).unwrap();
-        println!("└──────┘");
+        // Draw the preview contents
+        for row in 0..PREVIEW_HEIGHT {
+            execute!(stdout(), MoveTo(x as u16, (y + 1 + row as i32) as u16)).unwrap();
+            print!("│"); // Left border
+
+            for col in 0..PREVIEW_WIDTH {
+                print!("{}", preview[row][col].to_string());
+            }
+
+            println!("│"); // Right border
+        }
+
+        // Draw bottom border
+        execute!(
+            stdout(),
+            MoveTo(x as u16, (y + PREVIEW_HEIGHT as i32 + 1) as u16)
+        )
+        .unwrap();
+        println!("└────────┘");
     }
 
     pub fn draw(&self) {
@@ -189,7 +209,7 @@ impl Game {
     fn draw_game_screen(&self, term_width: u16, term_height: u16) {
         let board_width = WIDTH;
         let board_height = HEIGHT;
-        let start_x = (term_width as i32 - board_width as i32) / 2;
+        let start_x = (term_width as i32 - board_width as i32 * 2) / 2;
         let start_y = (term_height as i32 - board_height as i32) / 2;
 
         let mut temp_board = self.board.clone();
@@ -231,19 +251,18 @@ impl Game {
             }
         }
 
-        // Draw hold piece
+        // Calculate preview positions - both on right side
+        let preview_x = start_x + board_width as i32 * 2 + PREVIEW_PADDING;
+
+        // Draw next piece (always shown)
+        self.draw_piece_preview(&self.next_piece, preview_x, start_y, "NEXT");
+
+        // Draw hold piece if it exists
         if let Some(held_type) = self.held_piece {
             let held_piece = Tetromino::new(held_type);
-            self.draw_piece_preview(&held_piece, start_x - 10, start_y, "HOLD");
+            let hold_y = start_y + PREVIEW_HEIGHT as i32 + 3;
+            self.draw_piece_preview(&held_piece, preview_x, hold_y, "HOLD");
         }
-
-        // Draw next piece
-        self.draw_piece_preview(
-            &self.next_piece,
-            start_x + board_width as i32 + 4,
-            start_y,
-            "NEXT",
-        );
 
         // Draw main board
         for y in 0..HEIGHT {
@@ -259,27 +278,40 @@ impl Game {
         }
 
         // Draw score
+        let score_text = format!("Score: {}", self.score);
         execute!(
             stdout(),
-            MoveTo((start_x - 3) as u16, (start_y + HEIGHT as i32 + 1) as u16),
+            MoveTo(
+                (start_x + (board_width as i32 * 2 - score_text.len() as i32) / 2) as u16,
+                (start_y + board_height as i32 + 1) as u16
+            ),
         )
         .unwrap();
-        println!("Score: {}", self.score);
+        println!("{}", score_text);
 
         // Draw game over message if needed
         if let GameState::GameOver = self.state {
+            let game_over_text = "Game Over!";
             execute!(
                 stdout(),
-                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 2) as u16),
+                MoveTo(
+                    (start_x + (board_width as i32 * 2 - game_over_text.len() as i32) / 2) as u16,
+                    (start_y + board_height as i32 + 2) as u16
+                ),
             )
             .unwrap();
-            println!("Game Over!");
+            println!("{}", game_over_text);
+
+            let restart_text = "Press 'r' to restart or 'q' to quit";
             execute!(
                 stdout(),
-                MoveTo(start_x as u16, (start_y + HEIGHT as i32 + 3) as u16),
+                MoveTo(
+                    (start_x + (board_width as i32 * 2 - restart_text.len() as i32) / 2) as u16,
+                    (start_y + board_height as i32 + 3) as u16
+                ),
             )
             .unwrap();
-            println!("Press 'r' to restart or 'q' to quit");
+            println!("{}", restart_text);
         }
     }
 

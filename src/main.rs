@@ -12,7 +12,6 @@ use std::{io::stdout, thread, time::Duration};
 const TICK_RATE: u64 = 500;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Setup terminal
     enable_raw_mode()?;
     let mut stdout = stdout();
     execute!(stdout, EnterAlternateScreen, Hide)?;
@@ -73,7 +72,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
 
-        // Handle gravity only in Playing state
         if matches!(game.get_state(), GameState::Playing)
             && last_tick.elapsed() >= Duration::from_millis(TICK_RATE)
         {
@@ -87,7 +85,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         thread::sleep(Duration::from_millis(50));
     }
 
-    // Cleanup terminal
     execute!(stdout, Show, LeaveAlternateScreen)?;
     disable_raw_mode()?;
     Ok(())

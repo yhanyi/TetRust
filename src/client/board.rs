@@ -14,9 +14,6 @@ impl Cell {
             Cell::Empty => "⬜",
             Cell::Filled => "⬛",
             Cell::Preview => "🟦",
-            // Cell::Empty => "◻",
-            // Cell::Filled => "◼",
-            // Cell::Preview => "⛶",
         }
     }
 }
